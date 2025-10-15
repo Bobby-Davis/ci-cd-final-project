@@ -10,9 +10,9 @@ spec:
     - name: remove
       image: alpine:3
       env:
-        - name: WORKPACE_SOURCE_PATH
-          value: $(workspaces.soruce.path)
-      workingDir: $(workspaces.soruce.path)
+        - name: WORKSPACE_SOURCE_PATH
+          value: $(workspaces.source.path)
+      workingDir: $(workspaces.source.path)
       securityContext:
         runAsNonRoot: false
         runAsUser: 0
@@ -50,10 +50,39 @@ spec:
   steps:
     - name: nosetests
       image: python:3.9-slim
-      workingDir: $(workspaces.soruce.path)
+      workingDir: $(workspaces.source.path)
       script: |
           #!/bin/bash
           set -e
           python -m pip install --upgrade pip wheel
           pip install -r requirements.txt
           nosetests $(params.args)
+
+--- 
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: flake8
+spec:
+  workspaces:
+    - name: source
+  params:
+    - name: args
+      type: string
+      default: "service"
+  steps:
+    - name: run-flake8
+      image: python:3.9-slim
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: PIP_DISABLE_PIP_VERSION_CHECK
+          value: "1"
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        python -m pip install --upgrade pip setuptools wheel
+        # Install project deps if present (won't fail if missing)
+        if [ -f requirements.txt ]; then pip install -r requirements.txt || true; fi
+        python -m pip install --upgrade flake8
+        flake8 $(params.args) --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 $(params.args) --count --max-complexity=10 --max-line-length=127 --statistics
